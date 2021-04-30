@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from scipy import fftpack
 import time
 import heapq
+import ast
 
 def denoise(frame):
     #ELIMINADO RUIDO COMPULSIVO
@@ -58,7 +59,7 @@ def code(frame):
     for i in range(0, imsize[0], 8):
         for j in range(0, imsize[1], 8):
             dct_matrix[i:(i+8),j:(j+8)] = DCT(img_ycrcb[i:(i+8),j:(j+8)])
-    #print(dct_matrix)
+    #print(dct_matrix.shape)
     #---------------------------------------------------------------------------------
     #------------------------Cuantizacion---------------------------------------------
     Q = np.array([[16, 11, 10, 16, 24, 40, 51, 61],
@@ -71,8 +72,6 @@ def code(frame):
               [72, 92, 95, 98, 112, 100, 103, 99]])
 
     def quantize(percent):
-        im_dct = np.zeros(imsize)
-        nnz = np.zeros(dct_matrix.shape)
         if (percent < 50):
             S = 5000/percent
         else:
@@ -82,13 +81,13 @@ def code(frame):
         for i in range(0, imsize[0], 8):
             for j in range(0, imsize[1], 8):
                 quant = np.round(dct_matrix[i:(i+8),j:(j+8)]/Q_dyn)
-                #print(quant)
-        return quant#im_dct, np.sum(nnz)
+        return quant
 
     #imc, nnz = quantize(90)
     quant = quantize(90)
+    print(quant)
     #zigzag algorithm
-    def zigzag(n, matrix):
+    def zigzagq(n, matrix):
     	#zigzag rows
     	def compare(xy):
     		x, y = xy
@@ -100,7 +99,7 @@ def code(frame):
             d_mat[i] = matrix[i[1]][i[0]]
     	return {index: int(d_mat[index]) for j, index in enumerate(sorted(((x, y) for x in xs for y in xs),key=compare))}
 
-    im_zz = list(zigzag(8, quant).values())
+    im_zz = list(zigzagq(8, quant).values())
 
     #RLE
     def rlencoding(vect):
@@ -115,7 +114,7 @@ def code(frame):
         rle.append((count, vect[-1]))
         return rle
     rle = rlencoding(im_zz)
-    print(rle)
+    #print(rle)
 
     #Huffman
 
@@ -130,12 +129,12 @@ def code(frame):
     #sumar de(x, y) los x con misma y
     d = {}
     for i in range(len(rle_cpy)):
-        if(d[rle_cpy[i][1]]==None):
-            d[rle_cpy[i][1]] = rle_cpy[i][0]
+        if(rle_cpy[i][1] in d):
+            d[rle_cpy[i][1]] += rle_cpy[i][0]
         else:
-            d[rle_cpy[i]] += rle_cpy[i][0]
-
-    dendo = [[freq/symbol_count, [symbol, ""]] for symbol, freq in d]
+            d[rle_cpy[i][1]] = rle_cpy[i][0]
+    #print(d)
+    dendo = [[freq/symbol_count, [str(symbol), ""]] for symbol, freq in d.items()]
     heapq.heapify(dendo)
 
     while len(dendo) > 1:
@@ -149,11 +148,12 @@ def code(frame):
 
     dendo = sorted(heapq.heappop(dendo)[1:])
     dendo = {symbol : code for symbol, code in dendo}
+    #print(dendo)
 
     def huffencoding(array, dendo):
-        text = ""
+        text = []
         for c, v in array:
-            text += (str(v)*c)
+            text += [str(v) for i in range(c)]
         htext = ""
         for l in text:
             htext += dendo[l]
@@ -163,26 +163,70 @@ def code(frame):
             b.append(int(byte, 2))
         return b
 
-    frame = huffencoding(rle_cpy, dendo)
+    frame = str(dendo).encode()+b'\n'
+    frame += huffencoding(rle_cpy, dendo)
     #---------------------------------------------------------------------------------
-    return (frame, dendo)
+    return frame
 
 
 def decode(message):
-    #
     #Huffman
-    frame, dendo = message
-    
+    msg = message.split(b'\n')
+
+    dendo = ast.literal_eval(msg[0].decode())
+    fr = msg[1]
+    fr = [value for k in range(len(fr)) for value in fr]
+    fr = ["{0:08b}".format(value) for value in fr]
+    fr = ''.join(fr)
+
+    inv_dendo =  {code: symbol for symbol, code in dendo.items()}
+
+    code = ""
+    zz = []
+    for bit in fr:
+        code += str(bit)
+        if code in inv_dendo:
+            zz.append(inv_dendo[code])
+            code = ""
+    temp = zz.index('EOB')
+    zz = zz[:temp+1]
+    zeros = 64-temp
+    #print(zeros)
+    zz[temp] = 0
+    for i in range(zeros-1):
+        zz.append(0)
+
     #IQuantize
-    #IDCT = lambda G, norm='ortho': fftpack.idct(fftpack.idct(G, axis=0, norm=norm), axis=1, norm=norm)
-    #for i in range(0, imsize[0], 8):
-    #    for j in range(0, imsize[1], 8):
-    #        im_idct[i:(i+8),j:(j+8)] = IDCT(quant)
-    #        nnz[i, j] = np.count_nonzero(quant)
-    #return im_dct, np.sum(nnz)
+    def zigzag(n):
+        def compare(xy):
+            x, y = xy
+            return (x + y, -y if (x + y) % 2 else y)
+        xs = range(n)
+        return {index: n for n, index in enumerate(sorted(
+            ((x, y) for x in xs for y in xs),key=compare))}.values()
+    aux = list(zigzag(8))
+
+    relations = []
+    for i in range(len(aux)):
+        relations.append((aux[i], zz[i]))
+    relations = sorted(relations, key=lambda p: p[0])
+    print(relations)
+    img_quant = np.array([p[1] for p in relations])
+    print(img_quant)
+    img_size = (480, 848)
+
+    IDCT = lambda G, norm='ortho': fftpack.idct(fftpack.idct(G, axis=0, norm=norm), axis=1, norm=norm)
+
+    im_idct = np.zeros(img_size)
+    nnz = np.zeros(img_size)
+    for i in range(0, img_size[0], 8):
+        for j in range(0, img_size[1], 8):
+            im_idct[i:(i+8),j:(j+8)] = IDCT(img_quant)
+            nnz[i, j] = np.count_nonzero(img_quant)
+
     #
-    frame = np.frombuffer(bytes(memoryview(message)), dtype='uint8').reshape(480, 848)
-    #
+    frame = np.frombuffer(im_idct, dtype='uint8').reshape(480, 848)
+    #frame = np.frombuffer(bytes(memoryview(message)), dtype='uint8').reshape(480, 848)
     # ...con tu implementación del bloque receptor: decodificador + transformación inversa
     #
     return frame
