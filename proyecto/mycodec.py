@@ -150,15 +150,29 @@ def code(frame):
     dendo = sorted(heapq.heappop(dendo)[1:])
     dendo = {symbol : code for symbol, code in dendo}
 
+    def huffencoding(array, dendo):
+        text = ""
+        for c, v in array:
+            text += (str(v)*c)
+        htext = ""
+        for l in text:
+            htext += dendo[l]
+        b = bytearray()
+        for i in range(0, len(htext), 8):
+            byte = htext[i:i+8]
+            b.append(int(byte, 2))
+        return b
+
+    frame = huffencoding(rle_cpy, dendo)
     #---------------------------------------------------------------------------------
-    return frame
+    return (frame, dendo)
 
 
 def decode(message):
     #
-    # Reemplaza la linea 24...
     #Huffman
-    #RLE
+    frame, dendo = message
+    
     #IQuantize
     #IDCT = lambda G, norm='ortho': fftpack.idct(fftpack.idct(G, axis=0, norm=norm), axis=1, norm=norm)
     #for i in range(0, imsize[0], 8):
