@@ -6,6 +6,7 @@ from scipy import fftpack
 import time
 import heapq
 import ast
+import json
 
 def denoise(frame):
     #ELIMINADO RUIDO COMPULSIVO
@@ -59,6 +60,9 @@ def code(frame):
     for i in range(0, imsize[0], 8):
         for j in range(0, imsize[1], 8):
             dct_matrix[i:(i+8),j:(j+8)] = DCT(img_ycrcb[i:(i+8),j:(j+8)])
+
+    original = np.prod(img_ycrcb.shape)*8/1e+6
+    print("Imagen original: {:.3f} MB".format(original))
     #---------------------------------------------------------------------------------
     #------------------------Cuantizacion---------------------------------------------
     Q = np.array([[16, 11, 10, 16, 24, 40, 51, 61],
@@ -172,31 +176,38 @@ def code(frame):
         htext = ""
         for l in text:
             htext += dendo[l]
-        b = bytearray()
-        for i in range(0, len(htext), 8):
-            byte = htext[i:i+8]
-            b.append(int(byte, 2))
-        return b
+        # b = bytearray()
+        # for i in range(0, len(htext), 8):
+        #     byte = htext[i:i+8]
+        #     b.append(int(byte, 2))
+        return htext
 
-    frame = str(dendos).encode()+b'\n'
+    # dict = str(dendos).encode()
+    # frame = b''
+    # for i in range(len(rle_cpy)):
+    #     frame += huffencoding(rle_cpy[i], dendos[i])
+    frame = ""
     for i in range(len(rle_cpy)):
         frame += huffencoding(rle_cpy[i], dendos[i])
 
+    message = {
+        'dict': dendos,
+        'frame': frame,
+        }
     #---------------------------------------------------------------------------------
-    return frame
+    return json.dumps(message)
 
 
 def decode(message):
+    message = json.loads(message)
     #Huffman
-    msg = message.split(b'\n')
+    #dendos = ast.literal_eval(message[0].decode())
+    dendos = message['dict']
 
-    dendos = ast.literal_eval(msg[0].decode())
-
-    fr = msg[1]
+    fr = message['frame']
     fr = [value for k in range(len(fr)) for value in fr]
-    fr = ["{0:08b}".format(value) for value in fr]
+    #fr = ["{0:08b}".format(value) for value in fr]
     fr = ''.join(fr)
-    #print(fr)
 
     inv_dendos = []
     for dendo in dendos:
@@ -225,6 +236,7 @@ def decode(message):
             zzs[i].append(0)
 
     print(len(zzs))
+
     # #IQuantize
     IDCT = lambda G, norm='ortho': fftpack.idct( fftpack.idct(G, axis=0, norm=norm), axis=1, norm=norm)
 
@@ -235,8 +247,6 @@ def decode(message):
         xs = range(n)
         return {index: n for n, index in enumerate(sorted(((x, y) for x in xs for y in xs),key=compare))}
 
-
-    #####np.reshape(8x8)
     def rshp(zz):
         aux = zigzag5(8)
         relations = []
@@ -250,7 +260,6 @@ def decode(message):
     img_quant = []
     for i in range(len(zzs)):
         img_quant.append(rshp(zzs[i]))
-    #img_quant = np.array(img_quant)
     print(len(img_quant))
 
     img_size = (480, 848)
@@ -267,7 +276,7 @@ def decode(message):
     #
     quality = np.sum(nnz)*8/1e+6
     print("50% de calidad {:.3f} MB".format(quality))
-    frame = np.frombuffer(im_idct, dtype='uint8').reshape(480, 848)
+    frame = np.frombuffer(bytes(memoryview(im_idct)), dtype='uint8').reshape(480, 848)
     #print(message.shape)
     # frame = np.frombuffer(bytes(memoryview(message)), dtype='uint8').reshape(480, 848)
     # ...con tu implementación del bloque receptor: decodificador + transformación inversa

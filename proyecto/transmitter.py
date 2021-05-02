@@ -1,6 +1,7 @@
 import zmq
 from camera import CameraReader
 from mycodec import denoise, code
+import json
 
 port = 5555
 context = zmq.Context()
@@ -14,7 +15,6 @@ print("Cuadros por segundo: {0}".format(cam.get_fps()))
 for frame in cam:
     frame_denoise = denoise(frame)
     message = code(frame_denoise)
-    socket.send(message)
+    socket.send_string(message)
     status = socket.recv()
     #print(status)
-    
