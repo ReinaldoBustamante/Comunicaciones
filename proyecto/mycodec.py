@@ -39,12 +39,12 @@ def denoise(frame):
     img_reconstructed = np.real(fftpack.ifft2(fftpack.ifftshift(espectro_filtrado)))
     img_reconstructed = img_reconstructed.astype('uint8')
     frame = img_reconstructed
+    #print(frame.shape)
     #cv.imshow('1',frame)
     return frame
 
 def code(frame):
     #
-    # Implementa en esta función el bloque transmisor: Transformación + Cuantización + Codificación de fuente
     #
     #-------------------------Transformacion------------------------------------------
 
@@ -59,7 +59,6 @@ def code(frame):
     for i in range(0, imsize[0], 8):
         for j in range(0, imsize[1], 8):
             dct_matrix[i:(i+8),j:(j+8)] = DCT(img_ycrcb[i:(i+8),j:(j+8)])
-    #print(dct_matrix.shape)
     #---------------------------------------------------------------------------------
     #------------------------Cuantizacion---------------------------------------------
     Q = np.array([[16, 11, 10, 16, 24, 40, 51, 61],
@@ -78,14 +77,15 @@ def code(frame):
             S = 200 - 2*percent
         Q_dyn = np.floor((S*Q + 50) / 100);
         Q_dyn[Q_dyn == 0] = 1
+        quants = []
         for i in range(0, imsize[0], 8):
             for j in range(0, imsize[1], 8):
                 quant = np.round(dct_matrix[i:(i+8),j:(j+8)]/Q_dyn)
-        return quant
+                quants.append(quant)
+        return quants
 
-    #imc, nnz = quantize(90)
-    quant = quantize(90)
-    print(quant)
+    quants = quantize(50)
+    #------------------------Codificación---------------------------------------------
     #zigzag algorithm
     def zigzagq(n, matrix):
     	#zigzag rows
@@ -99,7 +99,9 @@ def code(frame):
             d_mat[i] = matrix[i[1]][i[0]]
     	return {index: int(d_mat[index]) for j, index in enumerate(sorted(((x, y) for x in xs for y in xs),key=compare))}
 
-    im_zz = list(zigzagq(8, quant).values())
+    im_zz = []
+    for i in range(len(quants)):
+        im_zz.append(list(zigzagq(8, quants[i]).values()))
 
     #RLE
     def rlencoding(vect):
@@ -113,42 +115,55 @@ def code(frame):
                 count = 1
         rle.append((count, vect[-1]))
         return rle
-    rle = rlencoding(im_zz)
-    #print(rle)
+
+    rle =  []
+    for i in range(len(im_zz)):
+        rle.append(rlencoding(im_zz[i]))
 
     #Huffman
 
     rle_cpy = rle.copy()
-    rle_cpy[-1] = (1, 'EOB')
+    for i in rle_cpy:
+        if i[-1][1] == 0:
+            i[-1] = (1, 'EOB')
 
-    #sumar de (x, y) los x
-    symbol_count = 0
-    for i in range(len(rle_cpy)):
-        symbol_count += rle_cpy[i][0]
+    def dendogram(rle):
+        #sumar de (x, y) los x
+        symbol_count = []
+        for i in range(len(rle_cpy)):
+            count = 0
+            for j in range(len(rle_cpy[i])):
+                count += rle_cpy[i][j][0]
+            symbol_count.append(count)
+        #sumar de(x, y) los x con misma y
+        dendos = []
+        for i in range(len(rle_cpy)):
+            d = {}
+            for j in range(len(rle_cpy[i])):
+                if(rle_cpy[i][j][1] in d):
+                    d[rle_cpy[i][j][1]] += rle_cpy[i][j][0]
+                else:
+                    d[rle_cpy[i][j][1]] = rle_cpy[i][j][0]
+            den = [[freq/symbol_count[i], [str(symbol), ""]] for symbol, freq in d.items()]
+            dendos.append(den)
+        return dendos
 
-    #sumar de(x, y) los x con misma y
-    d = {}
-    for i in range(len(rle_cpy)):
-        if(rle_cpy[i][1] in d):
-            d[rle_cpy[i][1]] += rle_cpy[i][0]
-        else:
-            d[rle_cpy[i][1]] = rle_cpy[i][0]
-    #print(d)
-    dendo = [[freq/symbol_count, [str(symbol), ""]] for symbol, freq in d.items()]
-    heapq.heapify(dendo)
+    dendos = dendogram(rle_cpy)
 
-    while len(dendo) > 1:
-        lo = heapq.heappop(dendo)
-        hi = heapq.heappop(dendo)
-        for code in lo[1:]:
-            code[1] = '0' + code[1]
-        for code in hi[1:]:
-            code[1] = '1' + code[1]
-        heapq.heappush(dendo, [lo[0] + hi[0]] + lo[1:] + hi[1:])
+    for i in range(len(dendos)):
+        heapq.heapify(dendos[i])
 
-    dendo = sorted(heapq.heappop(dendo)[1:])
-    dendo = {symbol : code for symbol, code in dendo}
-    #print(dendo)
+        while len(dendos[i]) > 1:
+            lo = heapq.heappop(dendos[i])
+            hi = heapq.heappop(dendos[i])
+            for code in lo[1:]:
+                code[1] = '0' + code[1]
+            for code in hi[1:]:
+                code[1] = '1' + code[1]
+            heapq.heappush(dendos[i], [lo[0] + hi[0]] + lo[1:] + hi[1:])
+
+        dendos[i] = sorted(heapq.heappop(dendos[i])[1:])
+        dendos[i] = {symbol : code for symbol, code in dendos[i]}
 
     def huffencoding(array, dendo):
         text = []
@@ -163,8 +178,10 @@ def code(frame):
             b.append(int(byte, 2))
         return b
 
-    frame = str(dendo).encode()+b'\n'
-    frame += huffencoding(rle_cpy, dendo)
+    frame = str(dendos).encode()+b'\n'
+    for i in range(len(rle_cpy)):
+        frame += huffencoding(rle_cpy[i], dendos[i])
+
     #---------------------------------------------------------------------------------
     return frame
 
@@ -173,60 +190,86 @@ def decode(message):
     #Huffman
     msg = message.split(b'\n')
 
-    dendo = ast.literal_eval(msg[0].decode())
+    dendos = ast.literal_eval(msg[0].decode())
+
     fr = msg[1]
     fr = [value for k in range(len(fr)) for value in fr]
     fr = ["{0:08b}".format(value) for value in fr]
     fr = ''.join(fr)
+    #print(fr)
 
-    inv_dendo =  {code: symbol for symbol, code in dendo.items()}
+    inv_dendos = []
+    for dendo in dendos:
+        inv_dendo =  {code: symbol for symbol, code in dendo.items()}
+        inv_dendos.append(inv_dendo)
 
     code = ""
+    zzs = []
     zz = []
+    curr_den = 0
     for bit in fr:
         code += str(bit)
-        if code in inv_dendo:
-            zz.append(inv_dendo[code])
+        if (curr_den < len(inv_dendos)) and (code in inv_dendos[curr_den]):
+            zz.append(inv_dendos[curr_den][code])
+            if (inv_dendos[curr_den][code] == 'EOB'):
+                curr_den += 1
+                zzs.append(zz)
+                zz = []
             code = ""
-    temp = zz.index('EOB')
-    zz = zz[:temp+1]
-    zeros = 64-temp
-    #print(zeros)
-    zz[temp] = 0
-    for i in range(zeros-1):
-        zz.append(0)
 
-    #IQuantize
-    def zigzag(n):
+    for i in range(len(zzs)):
+        zeros = 64-len(zzs[i])
+        if zzs[i][-1] == 'EOB':
+            zzs[i][-1] = 0
+        for j in range(zeros):
+            zzs[i].append(0)
+
+    print(len(zzs))
+    # #IQuantize
+    IDCT = lambda G, norm='ortho': fftpack.idct( fftpack.idct(G, axis=0, norm=norm), axis=1, norm=norm)
+
+    def zigzag5(n):
         def compare(xy):
             x, y = xy
             return (x + y, -y if (x + y) % 2 else y)
         xs = range(n)
-        return {index: n for n, index in enumerate(sorted(
-            ((x, y) for x in xs for y in xs),key=compare))}.values()
-    aux = list(zigzag(8))
+        return {index: n for n, index in enumerate(sorted(((x, y) for x in xs for y in xs),key=compare))}
 
-    relations = []
-    for i in range(len(aux)):
-        relations.append((aux[i], zz[i]))
-    relations = sorted(relations, key=lambda p: p[0])
-    print(relations)
-    img_quant = np.array([p[1] for p in relations])
-    print(img_quant)
+
+    #####np.reshape(8x8)
+    def rshp(zz):
+        aux = zigzag5(8)
+        relations = []
+        for c, i in aux.items():
+            relations.append((c, zz[i]))
+        img_quant = [[0 for i in range(8)]for j in range(8)]
+        for r in relations:
+            img_quant[r[0][0]] [r[0][1]] = r[1]
+        return np.array(img_quant)
+
+    img_quant = []
+    for i in range(len(zzs)):
+        img_quant.append(rshp(zzs[i]))
+    #img_quant = np.array(img_quant)
+    print(len(img_quant))
+
     img_size = (480, 848)
-
-    IDCT = lambda G, norm='ortho': fftpack.idct(fftpack.idct(G, axis=0, norm=norm), axis=1, norm=norm)
 
     im_idct = np.zeros(img_size)
     nnz = np.zeros(img_size)
     for i in range(0, img_size[0], 8):
         for j in range(0, img_size[1], 8):
-            im_idct[i:(i+8),j:(j+8)] = IDCT(img_quant)
-            nnz[i, j] = np.count_nonzero(img_quant)
-
+            k = ((img_size[1]*i)//64)+(j//8)
+            #print(k)
+            quant = img_quant[k]
+            im_idct[i:(i+8),j:(j+8)] = IDCT(quant)
+            nnz[i, j] = np.count_nonzero(quant)
     #
+    quality = np.sum(nnz)*8/1e+6
+    print("50% de calidad {:.3f} MB".format(quality))
     frame = np.frombuffer(im_idct, dtype='uint8').reshape(480, 848)
-    #frame = np.frombuffer(bytes(memoryview(message)), dtype='uint8').reshape(480, 848)
+    #print(message.shape)
+    # frame = np.frombuffer(bytes(memoryview(message)), dtype='uint8').reshape(480, 848)
     # ...con tu implementación del bloque receptor: decodificador + transformación inversa
     #
     return frame
