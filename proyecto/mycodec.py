@@ -60,7 +60,6 @@ def code(frame):
     for i in range(0, imsize[0], 8):
         for j in range(0, imsize[1], 8):
             dct_matrix[i:(i+8),j:(j+8)] = DCT(img_ycrcb[i:(i+8),j:(j+8)])
-
     original = np.prod(img_ycrcb.shape)*8/1e+6
     print("Imagen original: {:.3f} MB".format(original))
     #---------------------------------------------------------------------------------
@@ -79,7 +78,7 @@ def code(frame):
             S = 5000/percent
         else:
             S = 200 - 2*percent
-        Q_dyn = np.floor((S*Q + 50) / 100);
+        Q_dyn = np.floor((S*Q + 50) / 100)
         Q_dyn[Q_dyn == 0] = 1
         quants = []
         for i in range(0, imsize[0], 8):
@@ -89,6 +88,7 @@ def code(frame):
         return quants
 
     quants = quantize(50)
+    print(quants[0])
     #------------------------Codificación---------------------------------------------
     #zigzag algorithm
     def zigzagq(n, matrix):
@@ -169,6 +169,7 @@ def code(frame):
         dendos[i] = sorted(heapq.heappop(dendos[i])[1:])
         dendos[i] = {symbol : code for symbol, code in dendos[i]}
 
+
     def huffencoding(array, dendo):
         text = []
         for c, v in array:
@@ -203,12 +204,13 @@ def decode(message):
     #Huffman
     #dendos = ast.literal_eval(message[0].decode())
     dendos = message['dict']
-
+    a = list(dendos)[0]
+    print(a)
     fr = message['frame']
-    fr = [value for k in range(len(fr)) for value in fr]
+    print(fr[0:64])
+    time.sleep(60)
+    #fr = [value for k in range(len(fr)) for value in fr]
     #fr = ["{0:08b}".format(value) for value in fr]
-    fr = ''.join(fr)
-
     inv_dendos = []
     for dendo in dendos:
         inv_dendo =  {code: symbol for symbol, code in dendo.items()}
@@ -276,9 +278,9 @@ def decode(message):
     #
     quality = np.sum(nnz)*8/1e+6
     print("50% de calidad {:.3f} MB".format(quality))
-    frame = np.frombuffer(bytes(memoryview(im_idct)), dtype='uint8').reshape(480, 848)
+    #frame = np.frombuffer(bytes(memoryview(im_idct)), dtype='uint8').reshape(480, 848)
     #print(message.shape)
     # frame = np.frombuffer(bytes(memoryview(message)), dtype='uint8').reshape(480, 848)
     # ...con tu implementación del bloque receptor: decodificador + transformación inversa
     #
-    return frame
+    return im_idct
