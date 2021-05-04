@@ -8,6 +8,7 @@ import heapq
 import ast
 import json
 import sys
+from sklearn.metrics import mean_squared_error
 
 def denoise(frame):
     #ELIMINADO RUIDO COMPULSIVO
@@ -90,10 +91,10 @@ def code(frame):
                 quants.append(quant)
         return quants, nnz
 
-    quants, nnz = quantize(70, imsize)
+    quants, nnz = quantize(85, imsize)
 
     print('Imagen cuantizada {:.3f} MB'.format(np.sum(nnz)*8/1e+6))
-    #print(quants[0])
+
     #------------------------Codificación---------------------------------------------
     #zigzag algorithm
     def zigzagq(n, matrix):
@@ -130,7 +131,6 @@ def code(frame):
         rle.append(rlencoding(im_zz[i]))
 
     #Huffman
-
     rle_cpy = rle.copy()
     for i in rle_cpy:
         if i[-1][1] == 0:
@@ -182,16 +182,8 @@ def code(frame):
         htext = ""
         for l in text:
             htext += dendo[l]
-        # b = bytearray()
-        # for i in range(0, len(htext), 8):
-        #     byte = htext[i:i+8]
-        #     b.append(int(byte, 2))
         return htext
 
-    # dict = str(dendos).encode()
-    # frame = b''
-    # for i in range(len(rle_cpy)):
-    #     frame += huffencoding(rle_cpy[i], dendos[i])
     frame = ""
     for i in range(len(rle_cpy)):
         frame += huffencoding(rle_cpy[i], dendos[i])
@@ -202,8 +194,9 @@ def code(frame):
     print('Ancho de banda a 24 fps: {:.3} Mbps'.format(w*24))
 
     message = {
+        'original': img_ycrcb.tolist(),
         'dict': dendos,
-        'frame': frame,
+        'frame': frame
         }
 
     #---------------------------------------------------------------------------------
@@ -212,16 +205,12 @@ def code(frame):
 
 def decode(message):
     message = json.loads(message)
+
     #Huffman
-    #dendos = ast.literal_eval(message[0].decode())
     dendos = message['dict']
-    a = list(dendos)[0]
-    #print(a)
+
     fr = message['frame']
-    #print(fr[0:64])
-    #time.sleep(60)
-    #fr = [value for k in range(len(fr)) for value in fr]
-    #fr = ["{0:08b}".format(value) for value in fr]
+
     inv_dendos = []
     for dendo in dendos:
         inv_dendo =  {code: symbol for symbol, code in dendo.items()}
@@ -248,8 +237,6 @@ def decode(message):
         for j in range(zeros):
             zzs[i].append(0)
 
-    #print(len(zzs))
-
     # #IQuantize
     IDCT = lambda G, norm='ortho': fftpack.idct( fftpack.idct(G, axis=0, norm=norm), axis=1, norm=norm)
 
@@ -273,7 +260,6 @@ def decode(message):
     img_quant = []
     for i in range(len(zzs)):
         img_quant.append(rshp(zzs[i]))
-    #print(len(img_quant))
 
     img_size = (480, 848)
 
@@ -287,11 +273,7 @@ def decode(message):
             im_idct[i:(i+8),j:(j+8)] = IDCT(quant)
             nnz[i, j] = np.count_nonzero(quant)
     #
-    #quality = np.sum(nnz)*8/1e+6
-    #print("70% de calidad {:.3f} MB".format(quality))
-    #frame = np.frombuffer(bytes(memoryview(im_idct)), dtype='uint8').reshape(480, 848)
-    #print(message.shape)
-    # frame = np.frombuffer(bytes(memoryview(message)), dtype='uint8').reshape(480, 848)
-    # ...con tu implementación del bloque receptor: decodificador + transformación inversa
+    mse = mean_squared_error(np.array(message['original']), im_idct)
+    print('Error Medio Cuadrado: {:.3f}'.format(mse))
     #
     return im_idct*10/255
