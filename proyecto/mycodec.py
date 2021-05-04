@@ -198,7 +198,8 @@ def code(frame):
 
     w =len(frame)/(1024*1024*8)
     print('Imagen codificada {:.3} MB'.format(w))
-    print('Tasa de compresion: {:.3f} MB'.format(w/original))
+    print('Tasa de compresion: {:.3f}'.format(w/original))
+    print('Ancho de banda a 24 fps: {:.3} Mbps'.format(w*24))
 
     message = {
         'dict': dendos,
