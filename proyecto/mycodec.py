@@ -7,6 +7,7 @@ import time
 import heapq
 import ast
 import json
+import sys
 
 def denoise(frame):
     #ELIMINADO RUIDO COMPULSIVO
@@ -73,7 +74,8 @@ def code(frame):
               [49, 64, 78, 87, 103, 121, 120, 101],
               [72, 92, 95, 98, 112, 100, 103, 99]])
 
-    def quantize(percent):
+    def quantize(percent, imsize):
+        nnz = np.zeros(imsize)
         if (percent < 50):
             S = 5000/percent
         else:
@@ -84,10 +86,13 @@ def code(frame):
         for i in range(0, imsize[0], 8):
             for j in range(0, imsize[1], 8):
                 quant = np.round(dct_matrix[i:(i+8),j:(j+8)]/Q_dyn)
+                nnz[i, j] = np.count_nonzero(quant)
                 quants.append(quant)
-        return quants
+        return quants, nnz
 
-    quants = quantize(50)
+    quants, nnz = quantize(70, imsize)
+
+    print('Imagen cuantizada {:.3f} MB'.format(np.sum(nnz)*8/1e+6))
     #print(quants[0])
     #------------------------Codificación---------------------------------------------
     #zigzag algorithm
@@ -191,10 +196,13 @@ def code(frame):
     for i in range(len(rle_cpy)):
         frame += huffencoding(rle_cpy[i], dendos[i])
 
+    print('Imagen codificada {:.3} MB'.format(len(frame)/(1024*1024*8)))
+
     message = {
         'dict': dendos,
         'frame': frame,
         }
+
     #---------------------------------------------------------------------------------
     return json.dumps(message)
 
@@ -276,8 +284,8 @@ def decode(message):
             im_idct[i:(i+8),j:(j+8)] = IDCT(quant)
             nnz[i, j] = np.count_nonzero(quant)
     #
-    quality = np.sum(nnz)*8/1e+6
-    print("50% de calidad {:.3f} MB".format(quality))
+    #quality = np.sum(nnz)*8/1e+6
+    #print("70% de calidad {:.3f} MB".format(quality))
     #frame = np.frombuffer(bytes(memoryview(im_idct)), dtype='uint8').reshape(480, 848)
     #print(message.shape)
     # frame = np.frombuffer(bytes(memoryview(message)), dtype='uint8').reshape(480, 848)
