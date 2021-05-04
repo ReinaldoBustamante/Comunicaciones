@@ -196,7 +196,9 @@ def code(frame):
     for i in range(len(rle_cpy)):
         frame += huffencoding(rle_cpy[i], dendos[i])
 
-    print('Imagen codificada {:.3} MB'.format(len(frame)/(1024*1024*8)))
+    w =len(frame)/(1024*1024*8)
+    print('Imagen codificada {:.3} MB'.format(w))
+    print('Tasa de compresion: {:.3f} MB'.format(w/original))
 
     message = {
         'dict': dendos,
