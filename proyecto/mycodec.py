@@ -88,7 +88,7 @@ def code(frame):
         return quants
 
     quants = quantize(50)
-    print(quants[0])
+    #print(quants[0])
     #------------------------Codificación---------------------------------------------
     #zigzag algorithm
     def zigzagq(n, matrix):
@@ -205,10 +205,10 @@ def decode(message):
     #dendos = ast.literal_eval(message[0].decode())
     dendos = message['dict']
     a = list(dendos)[0]
-    print(a)
+    #print(a)
     fr = message['frame']
-    print(fr[0:64])
-    time.sleep(60)
+    #print(fr[0:64])
+    #time.sleep(60)
     #fr = [value for k in range(len(fr)) for value in fr]
     #fr = ["{0:08b}".format(value) for value in fr]
     inv_dendos = []
@@ -237,7 +237,7 @@ def decode(message):
         for j in range(zeros):
             zzs[i].append(0)
 
-    print(len(zzs))
+    #print(len(zzs))
 
     # #IQuantize
     IDCT = lambda G, norm='ortho': fftpack.idct( fftpack.idct(G, axis=0, norm=norm), axis=1, norm=norm)
@@ -262,7 +262,7 @@ def decode(message):
     img_quant = []
     for i in range(len(zzs)):
         img_quant.append(rshp(zzs[i]))
-    print(len(img_quant))
+    #print(len(img_quant))
 
     img_size = (480, 848)
 
@@ -283,4 +283,4 @@ def decode(message):
     # frame = np.frombuffer(bytes(memoryview(message)), dtype='uint8').reshape(480, 848)
     # ...con tu implementación del bloque receptor: decodificador + transformación inversa
     #
-    return im_idct
+    return im_idct*10/255
